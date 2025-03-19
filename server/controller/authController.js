@@ -1,6 +1,7 @@
 const { promisify } = require("util");
 const jwt = require("jsonwebtoken");
 const User = require("../model/userModel");
+const Journal = require("../model/journalModel");
 const catchAsync = require("./../utils/catchAsync");
 const AppError = require("./../utils/appError");
 const Email = require("./../utils/email");
@@ -25,7 +26,8 @@ exports.signup = catchAsync(async (req, res, next) => {
   const newUser = await User.create({
     name: req.body.name,
     email: req.body.email,
-    password: req.body.password,  });
+    password: req.body.password,
+  });
   const url = `${req.protocol}://${req.get("host")}/me`;
   await new Email(newUser, url).sendWelcome();
   createSendToken(newUser, 201, req, res);
@@ -75,6 +77,16 @@ exports.protect = catchAsync(async (req, res, next) => {
     );
   }
   req.user = currentUser;
+  next();
+});
+
+exports.samePerson = catchAsync(async (req, res, next) => {
+  if (req.params.id !== req.user.id) {
+    return next(
+      new AppError("You do not have permission to perform this action", 403)
+    );
+  }
+
   next();
 });
 

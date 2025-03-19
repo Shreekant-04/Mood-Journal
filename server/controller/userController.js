@@ -1,6 +1,7 @@
 const catchAsync = require("../utils/catchAsync");
 const Journal = require("../model/journalModel");
 const User = require("../model/userModel");
+const AppError = require("../utils/appError");
 
 const fetchQuote = async () => {
   const url =
@@ -13,13 +14,13 @@ const fetchQuote = async () => {
     },
   };
 
-  try {
-    const response = await fetch(url, options);
-    const result = await response.json();
-    return result;
-  } catch (error) {
-    next(error);
-  }
+  const response = await fetch(url, options);
+  const result = await response.json();
+  return result;
+};
+
+const isSameUser = (dataId, userId) => {
+  return dataId.toString() === userId.toString();
 };
 
 exports.create = catchAsync(async (req, res, next) => {
@@ -43,6 +44,9 @@ exports.getAllJournal = catchAsync(async (req, res, next) => {
     { userId: req.user._id },
     { userId: 1, title: 1, mood: 1, date: 1 }
   ).sort({ date: -1 });
+  if (!data) {
+    return next(new AppError("No entry found with that ID", 404));
+  }
 
   res.status(200).json({
     status: "success",
@@ -51,11 +55,10 @@ exports.getAllJournal = catchAsync(async (req, res, next) => {
 });
 exports.getOneJournal = catchAsync(async (req, res, next) => {
   const data = await Journal.findById(req.params.id);
-  if (!data) {
-    return res.status(404).json({
-      status: "fail",
-      message: "No entry found with that ID",
-    });
+  const sameUser = isSameUser(data.userId, req.user._id);
+
+  if (!data || !sameUser) {
+    return next(new AppError("No entry found with that ID", 404));
   }
   res.status(200).json({
     status: "success",
@@ -64,29 +67,39 @@ exports.getOneJournal = catchAsync(async (req, res, next) => {
 });
 
 exports.updateJournal = catchAsync(async (req, res, next) => {
-  const data = await Journal.findByIdAndUpdate(req.params.id, req.body, {
-    new: true,
+  const data = await Journal.findById(req.params.id);
+
+  if (!data) {
+    return next(new AppError("No entry found with that ID", 404));
+  }
+
+  const sameUser = isSameUser(data.userId, req.user._id);
+  if (!sameUser) {
+    return next(
+      new AppError("You are not authorized to update this entry", 403)
+    );
+  }
+
+  await Journal.updateOne({ _id: req.params.id }, req.body, {
     runValidators: true,
   });
-  if (!data) {
-    return res.status(404).json({
-      status: "fail",
-      message: "No entry found with that ID",
-    });
-  }
+
   res.status(200).json({
     status: "success",
-    data,
+    message: "Journal entry updated successfully",
   });
 });
+
 exports.deleteJournal = catchAsync(async (req, res, next) => {
-  const data = await Journal.findByIdAndDelete(req.params.id);
-  if (!data) {
-    return res.status(404).json({
-      status: "fail",
-      message: "No entry found with that ID",
-    });
+  const data = await Journal.findById(req.params.id);
+  const sameUser = isSameUser(data.userId, req.user._id);
+
+  if (!data || !sameUser) {
+    return next(new AppError("No entry found with that ID", 404));
   }
+
+  await Journal.findByIdAndDelete(req.params.id);
+
   res.status(204).json({
     status: "success",
     data: null,
@@ -96,10 +109,7 @@ exports.deleteJournal = catchAsync(async (req, res, next) => {
 exports.me = catchAsync(async (req, res, next) => {
   const data = await User.findById(req.user._id);
   if (!data) {
-    return res.status(404).json({
-      status: "fail",
-      message: "No user found with that ID",
-    });
+    return next(new AppError("No user found with that ID", 404));
   }
   res.status(200).json({
     status: "success",
