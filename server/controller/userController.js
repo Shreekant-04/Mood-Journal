@@ -50,6 +50,8 @@ exports.getAllJournal = catchAsync(async (req, res, next) => {
 
   res.status(200).json({
     status: "success",
+    lastEntry: data[0]?.date,
+    totalEntries: data.length,
     data,
   });
 });
